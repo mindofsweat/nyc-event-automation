@@ -1,0 +1,23 @@
+NYC EVENT OPPORTUNITIES
+{{ date }}
+==================================================
+
+Hello Keith,
+
+{{ event_count }} new photography opportunities found!
+
+INSTRUCTIONS:
+Review the events below and reply with the numbers of events you'd like to pursue.
+Example reply: "1, 3, 5" or "2, 4"
+
+==================================================
+
+EVENTS:
+
+{{ events_text }}
+
+==================================================
+
+NYC Event Automation System
+
+To stop receiving these emails, reply with "UNSUBSCRIBE"

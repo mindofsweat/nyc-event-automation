@@ -139,9 +139,49 @@ def scrape():
 
 def send_digest():
     """Send email digest to photographer."""
-    print("Sending digest email...")
-    # TODO: Implement digest sending logic
-    print("Digest sent.")
+    from email_service.digest import DigestGenerator, DigestTracker
+    
+    logger.info("Starting digest generation")
+    
+    # Load latest events
+    storage_manager = StorageManager()
+    try:
+        events = storage_manager.load_latest(format="json")
+        logger.info(f"Loaded {len(events)} events")
+    except Exception as e:
+        logger.error(f"Failed to load events: {e}")
+        print("Error: No events found. Please run 'scrape' first.")
+        return
+    
+    # Filter to only new events
+    tracker = DigestTracker()
+    new_events = tracker.filter_new_events(events)
+    logger.info(f"Found {len(new_events)} new events to include in digest")
+    
+    if len(new_events) == 0:
+        print("No new events to send in digest.")
+        return
+    
+    # Generate digest
+    generator = DigestGenerator()
+    digest = generator.generate_digest(new_events, max_events=20)
+    
+    # Save digest for preview
+    saved_files = generator.save_digest(digest)
+    
+    print(f"\nDigest generated successfully!")
+    print(f"Subject: {digest['subject']}")
+    print(f"Events included: {digest['event_count']}")
+    print(f"\nPreview files saved:")
+    print(f"  - HTML: {saved_files['html']}")
+    print(f"  - Text: {saved_files['text']}")
+    
+    # Mark events as sent
+    event_ids = [event.event_id for event in new_events]
+    tracker.mark_events_sent(event_ids, datetime.now())
+    
+    print("\nTo actually send the email, configure SMTP settings and run 'send-digest --send'")
+    print("For now, you can preview the digest in the saved files.")
 
 
 def check_replies():
