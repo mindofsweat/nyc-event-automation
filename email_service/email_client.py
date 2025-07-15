@@ -124,8 +124,13 @@ class GmailAPIClient(EmailClient):
     def get_replies(self, subject_contains: str, since_date: Optional[datetime] = None) -> List[Dict]:
         """Get email replies matching criteria."""
         try:
-            # Build query
-            query_parts = [f'subject:"{subject_contains}"', 'in:inbox']
+            # Build query - more flexible to catch replies
+            query_parts = []
+            
+            # Look for subject in various formats
+            subject_terms = subject_contains.split()
+            subject_query = ' OR '.join([f'subject:{term}' for term in subject_terms])
+            query_parts.append(f'({subject_query})')
             
             if since_date:
                 # Gmail uses epoch timestamp
@@ -137,23 +142,55 @@ class GmailAPIClient(EmailClient):
             # Search for messages
             results = self.service.users().messages().list(
                 userId='me',
-                q=query
+                q=query,
+                maxResults=50  # Get more results
             ).execute()
             
             messages = results.get('messages', [])
             
-            replies = []
+            # Get unique threads
+            thread_ids = set()
             for msg in messages:
-                # Get full message
-                message = self.service.users().messages().get(
-                    userId='me',
-                    id=msg['id']
-                ).execute()
-                
-                # Extract relevant info
-                reply_data = self._parse_message(message)
-                if reply_data:
-                    replies.append(reply_data)
+                thread_ids.add(msg.get('threadId'))
+            
+            replies = []
+            processed_ids = set()
+            
+            # Process each thread
+            for thread_id in thread_ids:
+                try:
+                    thread = self.service.users().threads().get(
+                        userId='me',
+                        id=thread_id
+                    ).execute()
+                    
+                    # Look at all messages in thread
+                    thread_messages = thread.get('messages', [])
+                    
+                    # Process messages in chronological order
+                    for message in thread_messages:
+                        msg_id = message['id']
+                        if msg_id in processed_ids:
+                            continue
+                            
+                        processed_ids.add(msg_id)
+                        
+                        # Check if this is after our date cutoff
+                        reply_data = self._parse_message(message)
+                        if reply_data:
+                            # Parse date to check if it's recent enough
+                            try:
+                                from email.utils import parsedate_to_datetime
+                                msg_date = parsedate_to_datetime(reply_data['date'])
+                                if since_date and msg_date < since_date:
+                                    continue
+                            except:
+                                pass
+                            
+                            replies.append(reply_data)
+                            
+                except Exception as e:
+                    logger.error(f"Error processing thread {thread_id}: {e}")
                     
             return replies
             

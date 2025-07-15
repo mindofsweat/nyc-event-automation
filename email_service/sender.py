@@ -3,7 +3,7 @@ Email sender module for sending digests and outreach emails.
 """
 
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import datetime
 from pathlib import Path
 
@@ -169,7 +169,7 @@ class EmailMonitor:
     def __init__(self, email_client: Optional[EmailClient] = None):
         self.client = email_client or get_email_client()
         
-    def check_replies(self, hours_back: int = 24) -> List[Dict]:
+    def check_replies(self, hours_back: int = 48) -> List[Dict]:
         """
         Check for replies in the last N hours.
         
@@ -183,11 +183,32 @@ class EmailMonitor:
         
         since_date = datetime.now() - timedelta(hours=hours_back)
         
-        # Check for digest replies
-        digest_replies = self.client.get_replies(
-            subject_contains="NYC Event Leads",
+        all_replies = []
+        
+        # Check for digest replies in inbox
+        inbox_replies = self.client.get_replies(
+            subject_contains="NYC Event",
             since_date=since_date
         )
+        all_replies.extend(inbox_replies)
+        
+        # Use thread-based monitoring for Gmail API
+        if hasattr(self.client, 'service'):
+            from .gmail_monitor import GmailThreadMonitor
+            
+            monitor = GmailThreadMonitor(self.client.service)
+            thread_replies = monitor.check_for_replies(hours_back)
+            all_replies.extend(thread_replies)
+            
+            logger.info(f"Thread monitor found {len(thread_replies)} replies")
+        
+        # Remove duplicates based on message ID
+        seen_ids = set()
+        digest_replies = []
+        for reply in all_replies:
+            if reply.get('id') not in seen_ids:
+                seen_ids.add(reply.get('id'))
+                digest_replies.append(reply)
         
         # Check for unsubscribe requests
         unsubscribe_replies = self._check_unsubscribe_requests(digest_replies)
@@ -218,10 +239,24 @@ class EmailMonitor:
     
     def _is_unsubscribe_request(self, body: str) -> bool:
         """Check if email body contains unsubscribe request."""
-        unsubscribe_keywords = ['unsubscribe', 'stop', 'remove me', 'opt out']
-        body_lower = body.lower()
+        # Get the first few lines of the reply (before any quoted content)
+        lines = body.split('\n')
         
-        return any(keyword in body_lower for keyword in unsubscribe_keywords)
+        # Look for unsubscribe request in the first 5 lines only
+        # This avoids false positives from quoted email footers
+        check_text = '\n'.join(lines[:5]).lower()
+        
+        # More specific unsubscribe patterns
+        unsubscribe_patterns = [
+            'unsubscribe',
+            'please stop',
+            'remove me',
+            'opt out',
+            'take me off',
+            'no more emails'
+        ]
+        
+        return any(pattern in check_text for pattern in unsubscribe_patterns)
     
     def _process_unsubscribes(self, unsubscribe_replies: List[Dict]):
         """Process unsubscribe requests."""

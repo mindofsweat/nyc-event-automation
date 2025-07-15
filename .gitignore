@@ -68,6 +68,7 @@ data/*.csv
 .DS_Store
 CLAUDE.md
 technical-requirements.md
+personal/
 
 # Credentials
 credentials.json

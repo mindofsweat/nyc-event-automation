@@ -137,14 +137,14 @@ def scrape():
             print(f"  {i}. {event.name} - {event.date.strftime('%b %d')} at {event.location}")
 
 
-def send_digest():
+def send_digest(send_email=False):
     """Send email digest to photographer."""
     from email_service.sender import EmailSender
     
     logger.info("Starting digest process")
     
-    # Check for --test flag
-    test_mode = '--test' in sys.argv
+    # Default to test mode unless --send flag is used
+    test_mode = not send_email
     
     # Load latest events
     storage_manager = StorageManager()
@@ -168,6 +168,8 @@ def send_digest():
             if test_mode:
                 print("\n✓ Test digest generated successfully!")
                 print("Check the data/digests directory for preview files.")
+                print("\nTo actually send the email, run:")
+                print("  python main.py send-digest --send")
             else:
                 print("\n✓ Digest sent successfully!")
         else:
@@ -184,11 +186,13 @@ def send_digest():
 def check_replies():
     """Check for and parse photographer replies."""
     from email_service.sender import EmailMonitor
+    from email_service.reply_parser import ReplyProcessor
     
     logger.info("Checking for email replies")
     
     try:
         monitor = EmailMonitor()
+        processor = ReplyProcessor()
         
         # Check replies from last 48 hours by default
         hours_back = 48
@@ -202,13 +206,29 @@ def check_replies():
             
         print(f"\nFound {len(replies)} replies:")
         
+        total_selections = 0
+        
         for i, reply in enumerate(replies, 1):
             print(f"\n{i}. From: {reply['from']}")
             print(f"   Subject: {reply['subject']}")
             print(f"   Date: {reply['date']}")
-            print(f"   Body preview: {reply['body'][:100]}...")
             
-        print("\nReplies have been logged. Run 'send-outreach' to process event selections.")
+            # Process the reply to extract event selections
+            selected_events = processor.process_reply(reply)
+            
+            if selected_events:
+                print(f"   ✓ Found {len(selected_events)} event selections:")
+                for event in selected_events:
+                    print(f"     - {event.name} ({event.date.strftime('%b %d')})")
+                total_selections += len(selected_events)
+            else:
+                print("   ✗ No event selections found in this reply")
+        
+        if total_selections > 0:
+            print(f"\n✓ Total events selected: {total_selections}")
+            print("\nRun 'send-outreach' to send emails to the selected event organizers.")
+        else:
+            print("\nNo event selections were found in the replies.")
         
     except Exception as e:
         logger.error(f"Error checking replies: {e}")
@@ -217,11 +237,50 @@ def check_replies():
         print("Run: python setup_gmail.py")
 
 
-def send_outreach():
+def send_outreach(test_mode=False):
     """Send outreach emails to selected event organizers."""
-    print("Sending outreach emails...")
-    # TODO: Implement outreach logic
-    print("Outreach complete.")
+    from email_service.outreach import OutreachSender, load_selected_events
+    
+    logger.info("Starting outreach process")
+    
+    # Load selected events
+    selected_events = load_selected_events()
+    
+    if not selected_events:
+        print("No selected events found.")
+        print("Please run 'check-replies' first to process photographer selections.")
+        return
+        
+    print(f"\nFound {len(selected_events)} selected events")
+    
+    if test_mode:
+        print("\nRunning in test mode - emails will be generated but not sent")
+        
+    try:
+        sender = OutreachSender()
+        results = sender.send_outreach_for_events(selected_events, test_mode=test_mode)
+        
+        sent = results['sent']
+        failed = results['failed']
+        
+        print(f"\n✓ Outreach complete!")
+        print(f"  - Sent: {len(sent)} emails")
+        print(f"  - Failed: {len(failed)} emails")
+        
+        if test_mode:
+            print("\nTo actually send the emails, run:")
+            print("  python main.py send-outreach --send")
+        
+        if failed:
+            print("\nFailed events (no contact info):")
+            for event_id in failed[:5]:
+                print(f"  - {event_id}")
+            if len(failed) > 5:
+                print(f"  ... and {len(failed) - 5} more")
+                
+    except Exception as e:
+        logger.error(f"Error sending outreach: {e}")
+        print(f"\nError: {e}")
 
 
 def run_all():
@@ -245,13 +304,19 @@ def main():
         help="Command to execute"
     )
     
+    parser.add_argument(
+        "--send",
+        action="store_true",
+        help="Actually send emails (for send-digest and send-outreach commands)"
+    )
+    
     args = parser.parse_args()
     
     commands = {
         "scrape": scrape,
-        "send-digest": send_digest,
+        "send-digest": lambda: send_digest(send_email=args.send),
         "check-replies": check_replies,
-        "send-outreach": send_outreach,
+        "send-outreach": lambda: send_outreach(test_mode=not args.send),
         "run-all": run_all
     }
     
