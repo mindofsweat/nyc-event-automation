@@ -17,6 +17,7 @@ from scrapers import (
     NYCForFreeScraper,
     AverageSocialiteScraper
 )
+from data_store import EventModel, EventCollection, StorageManager
 
 
 # Configure logger
@@ -27,14 +28,29 @@ def scrape():
     """Run all scrapers and save event data."""
     logger.info("Starting scraping process")
     
-    all_events = []
+    # Create event collection
+    collection = EventCollection()
+    storage_manager = StorageManager()
     
     # Run Eventbrite scraper
     try:
         logger.info("Running Eventbrite scraper...")
         eventbrite_scraper = EventbriteScraper(max_pages=3)
         eventbrite_events = eventbrite_scraper.scrape()
-        all_events.extend(eventbrite_events)
+        
+        # Convert to EventModel objects
+        for event in eventbrite_events:
+            event_model = EventModel(
+                name=event.name,
+                date=event.date,
+                location=event.location,
+                source_url=event.source_url,
+                contact_email=event.contact_email,
+                description=event.description,
+                source=event.source
+            )
+            collection.add(event_model)
+            
         logger.info(f"Eventbrite: Found {len(eventbrite_events)} events")
     except Exception as e:
         logger.error(f"Eventbrite scraper failed: {e}")
@@ -44,7 +60,19 @@ def scrape():
         logger.info("Running NYC For Free scraper...")
         nycforfree_scraper = NYCForFreeScraper()
         nycforfree_events = nycforfree_scraper.scrape()
-        all_events.extend(nycforfree_events)
+        
+        for event in nycforfree_events:
+            event_model = EventModel(
+                name=event.name,
+                date=event.date,
+                location=event.location,
+                source_url=event.source_url,
+                contact_email=event.contact_email,
+                description=event.description,
+                source=event.source
+            )
+            collection.add(event_model)
+            
         logger.info(f"NYC For Free: Found {len(nycforfree_events)} events")
     except Exception as e:
         logger.error(f"NYC For Free scraper failed: {e}")
@@ -54,41 +82,59 @@ def scrape():
         logger.info("Running Average Socialite scraper...")
         averagesocialite_scraper = AverageSocialiteScraper(max_pages=3)
         averagesocialite_events = averagesocialite_scraper.scrape()
-        all_events.extend(averagesocialite_events)
+        
+        for event in averagesocialite_events:
+            event_model = EventModel(
+                name=event.name,
+                date=event.date,
+                location=event.location,
+                source_url=event.source_url,
+                contact_email=event.contact_email,
+                description=event.description,
+                source=event.source
+            )
+            collection.add(event_model)
+            
         logger.info(f"Average Socialite: Found {len(averagesocialite_events)} events")
     except Exception as e:
         logger.error(f"Average Socialite scraper failed: {e}")
     
-    # Save events to JSON
-    output_dir = Path("data")
-    output_dir.mkdir(exist_ok=True)
+    # Remove duplicates
+    duplicates_removed = collection.remove_duplicates()
+    if duplicates_removed > 0:
+        logger.info(f"Removed {duplicates_removed} duplicate events")
     
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = output_dir / f"events_{timestamp}.json"
+    # Sort by date
+    collection.sort_by_date()
     
-    with open(output_file, 'w') as f:
-        json.dump(
-            [event.to_dict() for event in all_events],
-            f,
-            indent=2,
-            default=str
-        )
+    # Save events in both formats
+    saved_files = storage_manager.save_events(collection, format="both")
     
-    logger.info(f"Saved {len(all_events)} events to {output_file}")
+    # Print summary
     print(f"\nScraping complete!")
-    print(f"Total events found: {len(all_events)}")
-    print(f"Events saved to: {output_file}")
+    print(f"Total unique events: {len(collection)}")
+    print(f"Duplicates removed: {duplicates_removed}")
+    print(f"\nFiles saved:")
+    for format_type, filepath in saved_files.items():
+        print(f"  - {format_type.upper()}: {filepath}")
     
     # Show breakdown by source
-    if all_events:
+    if collection:
         sources = {}
-        for event in all_events:
+        for event in collection:
             source = event.source or "Unknown"
             sources[source] = sources.get(source, 0) + 1
         
         print("\nEvents by source:")
         for source, count in sources.items():
             print(f"  - {source}: {count} events")
+            
+    # Show some upcoming events
+    upcoming = collection.get_upcoming()[:5]
+    if upcoming:
+        print("\nNext 5 upcoming events:")
+        for i, event in enumerate(upcoming, 1):
+            print(f"  {i}. {event.name} - {event.date.strftime('%b %d')} at {event.location}")
 
 
 def send_digest():
