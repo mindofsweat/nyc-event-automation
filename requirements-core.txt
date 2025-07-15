@@ -1,8 +1,7 @@
-# Core dependencies
+# Core dependencies (without playwright and pandas)
 requests==2.31.0
 beautifulsoup4==4.12.3
 lxml==5.1.0
-playwright==1.41.2
 
 # Email handling
 python-dotenv==1.0.1
@@ -14,19 +13,6 @@ IMAPClient==3.0.1
 
 # Date/time handling
 python-dateutil==2.8.2
-
-# Data handling
-pandas==2.2.0
-
-# Testing
-pytest==7.4.4
-pytest-asyncio==0.23.3
-pytest-mock==3.12.0
-
-# Development tools
-black==23.12.1
-flake8==7.0.0
-isort==5.13.2
 
 # Logging
 loguru==0.7.2

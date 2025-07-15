@@ -139,9 +139,12 @@ def scrape():
 
 def send_digest():
     """Send email digest to photographer."""
-    from email_service.digest import DigestGenerator, DigestTracker
+    from email_service.sender import EmailSender
     
-    logger.info("Starting digest generation")
+    logger.info("Starting digest process")
+    
+    # Check for --test flag
+    test_mode = '--test' in sys.argv
     
     # Load latest events
     storage_manager = StorageManager()
@@ -153,42 +156,65 @@ def send_digest():
         print("Error: No events found. Please run 'scrape' first.")
         return
     
-    # Filter to only new events
-    tracker = DigestTracker()
-    new_events = tracker.filter_new_events(events)
-    logger.info(f"Found {len(new_events)} new events to include in digest")
-    
-    if len(new_events) == 0:
-        print("No new events to send in digest.")
-        return
-    
-    # Generate digest
-    generator = DigestGenerator()
-    digest = generator.generate_digest(new_events, max_events=20)
-    
-    # Save digest for preview
-    saved_files = generator.save_digest(digest)
-    
-    print(f"\nDigest generated successfully!")
-    print(f"Subject: {digest['subject']}")
-    print(f"Events included: {digest['event_count']}")
-    print(f"\nPreview files saved:")
-    print(f"  - HTML: {saved_files['html']}")
-    print(f"  - Text: {saved_files['text']}")
-    
-    # Mark events as sent
-    event_ids = [event.event_id for event in new_events]
-    tracker.mark_events_sent(event_ids, datetime.now())
-    
-    print("\nTo actually send the email, configure SMTP settings and run 'send-digest --send'")
-    print("For now, you can preview the digest in the saved files.")
+    try:
+        sender = EmailSender()
+        
+        if test_mode:
+            print("Running in test mode - email will be generated but not sent")
+            
+        success = sender.send_digest(events, test_mode=test_mode)
+        
+        if success:
+            if test_mode:
+                print("\n✓ Test digest generated successfully!")
+                print("Check the data/digests directory for preview files.")
+            else:
+                print("\n✓ Digest sent successfully!")
+        else:
+            if not test_mode:
+                print("\n✗ Failed to send digest. Check logs for details.")
+                
+    except Exception as e:
+        logger.error(f"Error in send_digest: {e}")
+        print(f"\nError: {e}")
+        print("\nMake sure you have configured email settings.")
+        print("Run: python setup_gmail.py")
 
 
 def check_replies():
     """Check for and parse photographer replies."""
-    print("Checking for replies...")
-    # TODO: Implement reply checking logic
-    print("Reply check complete.")
+    from email_service.sender import EmailMonitor
+    
+    logger.info("Checking for email replies")
+    
+    try:
+        monitor = EmailMonitor()
+        
+        # Check replies from last 48 hours by default
+        hours_back = 48
+        replies = monitor.check_replies(hours_back=hours_back)
+        
+        print(f"\nChecking emails from the last {hours_back} hours...")
+        
+        if not replies:
+            print("No new replies found.")
+            return
+            
+        print(f"\nFound {len(replies)} replies:")
+        
+        for i, reply in enumerate(replies, 1):
+            print(f"\n{i}. From: {reply['from']}")
+            print(f"   Subject: {reply['subject']}")
+            print(f"   Date: {reply['date']}")
+            print(f"   Body preview: {reply['body'][:100]}...")
+            
+        print("\nReplies have been logged. Run 'send-outreach' to process event selections.")
+        
+    except Exception as e:
+        logger.error(f"Error checking replies: {e}")
+        print(f"\nError: {e}")
+        print("\nMake sure you have configured email settings.")
+        print("Run: python setup_gmail.py")
 
 
 def send_outreach():
