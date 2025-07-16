@@ -1,0 +1,95 @@
+name: Check Email Replies
+
+on:
+  schedule:
+    # Run every hour
+    - cron: '0 * * * *'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  check-and-send-outreach:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Create required directories
+      run: |
+        mkdir -p data logs
+        
+    - name: Set up credentials
+      env:
+        GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
+        GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
+      run: |
+        echo "$GMAIL_CREDENTIALS" > credentials.json
+        echo "$GMAIL_TOKEN" > token.json
+        
+    - name: Restore event data from cache
+      uses: actions/cache@v3
+      with:
+        path: data/events_*.json
+        key: events-${{ github.run_id }}
+        restore-keys: |
+          events-
+          
+    - name: Check for email replies
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        PHOTOGRAPHER_EMAIL: ${{ secrets.PHOTOGRAPHER_EMAIL }}
+      run: |
+        echo "Checking for replies..."
+        python main.py check-replies
+        
+    - name: Send outreach emails if selections exist
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        PHOTOGRAPHER_EMAIL: ${{ secrets.PHOTOGRAPHER_EMAIL }}
+        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      run: |
+        if [ -f "data/selections.json" ]; then
+          echo "Found selections, sending outreach emails..."
+          python main.py send-outreach --send
+          
+          # Archive processed selections
+          mv data/selections.json data/selections_$(date +%Y%m%d_%H%M%S).json
+        else
+          echo "No new selections found"
+        fi
+        
+    - name: Upload processed selections
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: processed-selections-${{ github.run_id }}
+        path: data/selections_*.json
+        retention-days: 30
+        
+    - name: Upload outreach logs
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: outreach-logs-${{ github.run_id }}
+        path: data/outreach_sent.json
+        retention-days: 30

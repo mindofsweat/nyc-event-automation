@@ -51,7 +51,8 @@ class GmailAPIClient(EmailClient):
     
     # If modifying these scopes, delete the token file.
     SCOPES = ['https://www.googleapis.com/auth/gmail.send',
-              'https://www.googleapis.com/auth/gmail.readonly']
+              'https://www.googleapis.com/auth/gmail.readonly',
+              'https://www.googleapis.com/auth/spreadsheets']
     
     def __init__(self, credentials_file: str = "credentials.json",
                  token_file: str = "token.json"):

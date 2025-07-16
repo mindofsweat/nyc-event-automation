@@ -24,7 +24,7 @@ from data_store import EventModel, EventCollection, StorageManager
 logger.add("logs/scraper_{time}.log", rotation="1 day", retention="7 days")
 
 
-def scrape():
+def scrape(use_sheets=False):
     """Run all scrapers and save event data."""
     logger.info("Starting scraping process")
     
@@ -135,6 +135,24 @@ def scrape():
         print("\nNext 5 upcoming events:")
         for i, event in enumerate(upcoming, 1):
             print(f"  {i}. {event.name} - {event.date.strftime('%b %d')} at {event.location}")
+    
+    # Save to Google Sheets if requested
+    if use_sheets:
+        try:
+            from data_store import GoogleSheetsManager
+            print("\n📊 Syncing with Google Sheets...")
+            
+            sheets_manager = GoogleSheetsManager()
+            stats = sheets_manager.sync_events(collection)
+            
+            print(f"✓ Synced to Google Sheets:")
+            print(f"  - Total events in sheet: {stats['sheet_events']}")
+            print(f"  - New events added: {stats['new_events']}")
+            
+        except Exception as e:
+            logger.error(f"Failed to sync with Google Sheets: {e}")
+            print(f"\n⚠️  Google Sheets sync failed: {e}")
+            print("Run 'python setup_sheets.py' to configure Google Sheets")
 
 
 def send_digest(send_email=False):
@@ -310,10 +328,16 @@ def main():
         help="Actually send emails (for send-digest and send-outreach commands)"
     )
     
+    parser.add_argument(
+        "--sheets",
+        action="store_true",
+        help="Sync events with Google Sheets (for scrape command)"
+    )
+    
     args = parser.parse_args()
     
     commands = {
-        "scrape": scrape,
+        "scrape": lambda: scrape(use_sheets=args.sheets),
         "send-digest": lambda: send_digest(send_email=args.send),
         "check-replies": check_replies,
         "send-outreach": lambda: send_outreach(test_mode=not args.send),

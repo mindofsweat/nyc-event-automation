@@ -1,0 +1,101 @@
+name: Test Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Command to run'
+        required: true
+        default: 'scrape'
+        type: choice
+        options:
+          - scrape
+          - send-digest
+          - check-replies
+          - send-outreach
+      test_mode:
+        description: 'Run in test mode (no emails sent)'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  test-command:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install Playwright browsers
+      if: ${{ github.event.inputs.command == 'scrape' }}
+      run: playwright install chromium
+      
+    - name: Create required directories
+      run: |
+        mkdir -p data logs
+        
+    - name: Set up credentials
+      env:
+        GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
+        GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
+      run: |
+        if [ ! -z "$GMAIL_CREDENTIALS" ]; then
+          echo "$GMAIL_CREDENTIALS" > credentials.json
+        fi
+        if [ ! -z "$GMAIL_TOKEN" ]; then
+          echo "$GMAIL_TOKEN" > token.json
+        fi
+        
+    - name: Set up test environment
+      if: ${{ github.event.inputs.test_mode == 'true' }}
+      run: |
+        echo "Running in TEST MODE - no emails will be sent"
+        
+    - name: Run command
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        PHOTOGRAPHER_EMAIL: ${{ secrets.PHOTOGRAPHER_EMAIL }}
+        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      run: |
+        if [ "${{ github.event.inputs.test_mode }}" == "true" ]; then
+          case "${{ github.event.inputs.command }}" in
+            "send-digest"|"send-outreach")
+              python main.py ${{ github.event.inputs.command }}
+              ;;
+            *)
+              python main.py ${{ github.event.inputs.command }}
+              ;;
+          esac
+        else
+          case "${{ github.event.inputs.command }}" in
+            "send-digest"|"send-outreach")
+              python main.py ${{ github.event.inputs.command }} --send
+              ;;
+            *)
+              python main.py ${{ github.event.inputs.command }}
+              ;;
+          esac
+        fi
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-output-${{ github.run_id }}
+        path: |
+          data/
+          logs/
+        retention-days: 7

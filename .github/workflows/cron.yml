@@ -1,0 +1,203 @@
+name: NYC Event Automation
+
+on:
+  schedule:
+    # Run daily at 9 AM EST (2 PM UTC)
+    - cron: '0 14 * * *'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  scrape-and-send-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15  # Ensure we stay under 15 minutes
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install Playwright browsers
+      run: playwright install chromium
+      
+    - name: Create required directories
+      run: |
+        mkdir -p data logs
+        
+    - name: Set up credentials
+      env:
+        GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
+        GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
+      run: |
+        echo "$GMAIL_CREDENTIALS" > credentials.json
+        echo "$GMAIL_TOKEN" > token.json
+        
+    - name: Set up Google Sheets credentials
+      if: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS != '' }}
+      env:
+        GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
+      run: |
+        echo "$GOOGLE_SHEETS_CREDENTIALS" > sheets_credentials.json
+        
+    - name: Run scrapers
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+      run: |
+        if [ ! -z "$GOOGLE_SHEETS_ID" ]; then
+          python main.py scrape --sheets
+        else
+          python main.py scrape
+        fi
+        
+    - name: Send digest email
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        PHOTOGRAPHER_EMAIL: ${{ secrets.PHOTOGRAPHER_EMAIL }}
+        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      run: |
+        python main.py send-digest --send
+        
+    - name: Upload scraped data
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: scraped-events
+        path: data/events_*.json
+        retention-days: 7
+        
+    - name: Upload logs
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: logs
+        path: logs/
+        retention-days: 7
+
+  check-replies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    # Run 4 hours after the digest is sent
+    needs: scrape-and-send-digest
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Download previous artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: scraped-events
+        path: data/
+        
+    - name: Set up credentials
+      env:
+        GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
+        GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
+      run: |
+        echo "$GMAIL_CREDENTIALS" > credentials.json
+        echo "$GMAIL_TOKEN" > token.json
+        
+    - name: Check for replies
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        PHOTOGRAPHER_EMAIL: ${{ secrets.PHOTOGRAPHER_EMAIL }}
+      run: |
+        python main.py check-replies
+        
+    - name: Send outreach emails
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        PHOTOGRAPHER_EMAIL: ${{ secrets.PHOTOGRAPHER_EMAIL }}
+        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      run: |
+        # Only send if selections exist
+        if [ -f "data/selections.json" ]; then
+          python main.py send-outreach --send
+        else
+          echo "No selections found, skipping outreach"
+        fi
+        
+    - name: Upload selections
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: event-selections
+        path: data/selections.json
+        retention-days: 30
+
+  # Alternative workflow for immediate reply checking
+  check-replies-hourly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    # This job runs every hour to check for replies
+    # It's independent of the main workflow
+    if: github.event_name == 'schedule'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Set up credentials
+      env:
+        GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
+        GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
+      run: |
+        echo "$GMAIL_CREDENTIALS" > credentials.json
+        echo "$GMAIL_TOKEN" > token.json
+        
+    - name: Check and process replies
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        PHOTOGRAPHER_EMAIL: ${{ secrets.PHOTOGRAPHER_EMAIL }}
+        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      run: |
+        # Check for replies from the last 72 hours
+        python main.py check-replies
+        
+        # Send outreach if selections exist
+        if [ -f "data/selections.json" ]; then
+          python main.py send-outreach --send
+        fi
