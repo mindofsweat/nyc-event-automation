@@ -12,8 +12,12 @@ import gspread
 from google.oauth2.service_account import Credentials
 from google.oauth2.credentials import Credentials as UserCredentials
 from loguru import logger
+from dotenv import load_dotenv
 
 from .models import EventModel, EventCollection
+
+# Load environment variables
+load_dotenv()
 
 
 class GoogleSheetsStorage:
@@ -40,7 +44,7 @@ class GoogleSheetsStorage:
     
     def __init__(self, spreadsheet_id: Optional[str] = None, 
                  credentials_file: Optional[str] = None,
-                 use_oauth: bool = False):
+                 use_oauth: bool = None):
         """
         Initialize Google Sheets storage.
         
@@ -51,6 +55,12 @@ class GoogleSheetsStorage:
         """
         self.spreadsheet_id = spreadsheet_id or os.getenv('GOOGLE_SHEETS_ID')
         self.credentials_file = credentials_file or os.getenv('GOOGLE_SHEETS_CREDENTIALS', 'sheets_credentials.json')
+        
+        # Auto-detect auth method if not specified
+        if use_oauth is None:
+            # If no service account file exists, use OAuth
+            use_oauth = not Path(self.credentials_file).exists()
+        
         self.use_oauth = use_oauth
         
         if not self.spreadsheet_id:
