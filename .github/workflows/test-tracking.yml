@@ -47,12 +47,10 @@ jobs:
           echo "Creating sample tracking file..."
           
           # Create a sample tracking file
-          cat > data/digest_tracking.json << 'EOF'
-{
-  "sent_events": {},
-  "digest_history": []
-}
-EOF
+          echo '{
+            "sent_events": {},
+            "digest_history": []
+          }' > data/digest_tracking.json
           echo "✅ Empty tracking file created"
         fi
         
