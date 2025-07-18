@@ -49,11 +49,12 @@ jobs:
         echo "$GMAIL_TOKEN" > token.json
         
     - name: Set up Google Sheets credentials
-      if: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS != '' }}
       env:
         GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
       run: |
-        echo "$GOOGLE_SHEETS_CREDENTIALS" > sheets_credentials.json
+        if [ ! -z "$GOOGLE_SHEETS_CREDENTIALS" ]; then
+          echo "$GOOGLE_SHEETS_CREDENTIALS" > sheets_credentials.json
+        fi
         
     - name: Run scrapers
       env:
