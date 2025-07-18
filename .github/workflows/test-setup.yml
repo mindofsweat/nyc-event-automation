@@ -68,7 +68,7 @@ jobs:
         # Test Gmail connection
         echo ""
         echo "✓ Testing Gmail API connection..."
-        python -c "
+        cat > test_gmail.py << 'EOF'
 import os
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -78,10 +78,11 @@ try:
     service = build('gmail', 'v1', credentials=creds)
     labels = service.users().labels().list(userId='me').execute()
     print('  ✅ Gmail API connection successful')
-    print(f'  📊 Found {len(labels.get(\"labels\", []))} labels')
+    print(f'  📊 Found {len(labels.get("labels", []))} labels')
 except Exception as e:
     print(f'  ❌ Gmail API error: {e}')
-        "
+EOF
+        python test_gmail.py
         
         echo ""
         echo "✨ Test complete!"
