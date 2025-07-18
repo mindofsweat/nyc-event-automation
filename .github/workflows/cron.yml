@@ -40,6 +40,13 @@ jobs:
       run: |
         mkdir -p data logs
         
+    - name: Restore digest tracking data
+      uses: actions/download-artifact@v4
+      with:
+        name: digest-tracking
+        path: data/
+      continue-on-error: true  # Don't fail on first run when no artifact exists
+        
     - name: Set up credentials
       env:
         GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
@@ -92,6 +99,15 @@ jobs:
         name: logs
         path: logs/
         retention-days: 7
+        
+    - name: Upload digest tracking data
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: digest-tracking
+        path: data/digest_tracking.json
+        retention-days: 90  # Keep for 3 months
+        if-no-files-found: ignore  # Don't fail if tracking doesn't exist yet
 
   check-replies:
     runs-on: ubuntu-latest
@@ -120,6 +136,13 @@ jobs:
       with:
         name: scraped-events
         path: data/
+        
+    - name: Restore digest tracking for replies
+      uses: actions/download-artifact@v4
+      with:
+        name: digest-tracking
+        path: data/
+      continue-on-error: true
         
     - name: Set up credentials
       env:

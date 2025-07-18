@@ -1,0 +1,81 @@
+name: Test Tracking Persistence
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+jobs:
+  test-tracking:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Create data directory
+      run: mkdir -p data
+      
+    - name: Try to restore tracking data
+      uses: actions/download-artifact@v4
+      with:
+        name: digest-tracking
+        path: data/
+      continue-on-error: true
+      
+    - name: Check tracking status
+      run: |
+        echo "🔍 Checking digest tracking persistence"
+        echo "======================================="
+        
+        if [ -f "data/digest_tracking.json" ]; then
+          echo "✅ Tracking file found!"
+          echo ""
+          echo "📊 Tracking contents:"
+          cat data/digest_tracking.json | python3 -m json.tool
+          
+          # Count events
+          SENT_COUNT=$(python3 -c "import json; d=json.load(open('data/digest_tracking.json')); print(len(d['sent_events']))")
+          HISTORY_COUNT=$(python3 -c "import json; d=json.load(open('data/digest_tracking.json')); print(len(d['digest_history']))")
+          
+          echo ""
+          echo "📈 Summary:"
+          echo "  - Previously sent events: $SENT_COUNT"
+          echo "  - Digest history entries: $HISTORY_COUNT"
+        else
+          echo "❌ No tracking file found"
+          echo "This is normal for the first run."
+          echo ""
+          echo "Creating sample tracking file..."
+          
+          # Create a sample tracking file
+          cat > data/digest_tracking.json << 'EOF'
+{
+  "sent_events": {},
+  "digest_history": []
+}
+EOF
+          echo "✅ Empty tracking file created"
+        fi
+        
+    - name: List artifacts from previous runs
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const artifacts = await github.rest.actions.listArtifactsForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            per_page: 10
+          });
+          
+          console.log('📦 Recent artifacts:');
+          for (const artifact of artifacts.data.artifacts) {
+            if (artifact.name === 'digest-tracking') {
+              console.log(`  ✅ ${artifact.name} - Created: ${artifact.created_at} - Size: ${artifact.size_in_bytes} bytes`);
+            }
+          }
+          
+    - name: Upload test tracking
+      uses: actions/upload-artifact@v4
+      with:
+        name: digest-tracking
+        path: data/digest_tracking.json
+        retention-days: 90
