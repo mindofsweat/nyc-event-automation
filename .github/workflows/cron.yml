@@ -45,15 +45,15 @@ jobs:
         GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
         GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
       run: |
-        echo "$GMAIL_CREDENTIALS" > credentials.json
-        echo "$GMAIL_TOKEN" > token.json
+        echo "$GMAIL_CREDENTIALS" | base64 -d > credentials.json
+        echo "$GMAIL_TOKEN" | base64 -d > token.json
         
     - name: Set up Google Sheets credentials
       env:
         GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
       run: |
         if [ ! -z "$GOOGLE_SHEETS_CREDENTIALS" ]; then
-          echo "$GOOGLE_SHEETS_CREDENTIALS" > sheets_credentials.json
+          echo "$GOOGLE_SHEETS_CREDENTIALS" | base64 -d > sheets_credentials.json
         fi
         
     - name: Run scrapers
@@ -73,6 +73,7 @@ jobs:
         PHOTOGRAPHER_EMAIL: ${{ secrets.PHOTOGRAPHER_EMAIL }}
         SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
         SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
       run: |
         python main.py send-digest --send
         
@@ -125,8 +126,8 @@ jobs:
         GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
         GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
       run: |
-        echo "$GMAIL_CREDENTIALS" > credentials.json
-        echo "$GMAIL_TOKEN" > token.json
+        echo "$GMAIL_CREDENTIALS" | base64 -d > credentials.json
+        echo "$GMAIL_TOKEN" | base64 -d > token.json
         
     - name: Check for replies
       env:
@@ -185,8 +186,8 @@ jobs:
         GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
         GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
       run: |
-        echo "$GMAIL_CREDENTIALS" > credentials.json
-        echo "$GMAIL_TOKEN" > token.json
+        echo "$GMAIL_CREDENTIALS" | base64 -d > credentials.json
+        echo "$GMAIL_TOKEN" | base64 -d > token.json
         
     - name: Check and process replies
       env:

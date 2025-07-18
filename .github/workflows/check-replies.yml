@@ -42,8 +42,8 @@ jobs:
         GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
         GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
       run: |
-        echo "$GMAIL_CREDENTIALS" > credentials.json
-        echo "$GMAIL_TOKEN" > token.json
+        echo "$GMAIL_CREDENTIALS" | base64 -d > credentials.json
+        echo "$GMAIL_TOKEN" | base64 -d > token.json
         
     - name: Restore event data from cache
       uses: actions/cache@v3
@@ -67,6 +67,7 @@ jobs:
         PHOTOGRAPHER_EMAIL: ${{ secrets.PHOTOGRAPHER_EMAIL }}
         SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
         SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
       run: |
         if [ -f "data/selections.json" ]; then
           echo "Found selections, sending outreach emails..."
